@@ -63,7 +63,8 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// Register controllers, swagger, etc.
+// Register memory cache, controllers, swagger, etc.
+builder.Services.AddMemoryCache();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -95,6 +96,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddTransient<ISeeder, RoleAndUserSeeder>();
+builder.Services.AddSingleton<Services.Mappers.IInventoryMapper, Services.Mappers.InventoryMapper>();
+builder.Services.AddSingleton<Services.Mappers.IOrderMapper, Services.Mappers.OrderMapper>();
 
 var app = builder.Build();
 

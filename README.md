@@ -1,7 +1,7 @@
 # LogiTrack (WIP)
 
 ## Project Structure
-
+```
 LogiTrack/
 ├── Controllers/
 │   ├── AuthController.cs
@@ -11,6 +11,9 @@ LogiTrack/
 │   ├── ISeeder.cs
 │   ├── LogiTrackContext.cs
 │   └── RoleAndUserSeeder.cs
+├── Dto/
+│   ├── InventoryItemDto.cs
+│   └── OrderDto.cs
 ├── Infrastructure/
 │   └── DatabaseSeederExtensions.cs
 ├── Migrations/
@@ -19,11 +22,17 @@ LogiTrack/
 │   └── InventoryItem.cs
 ├── Properties/
 │   └── launchSetting.json
+├── Services/
+│   └── Mappers
+|       ├── IInventoryMapper.cs
+|       └── InventoryMapper.cs
 ├── appsettings.json
 ├── LogiTrack.csproj
 ├── LogiTrack.sln
 ├── Program.cs
 └── README.md
+```
+
 
 ## Testing endpoints
 
@@ -63,3 +72,8 @@ When testing the `POST /api/orders`, feel free tp use the following sample:
   ]
 }
 ```
+
+## Next Steps
+- [ ] add fields `description` and `isActive` to the `InventoyItem` model and dto
+- [ ] add unit tests
+- [ ] add integration tests

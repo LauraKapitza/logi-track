@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using Dtos;
 using Models;
 
 namespace Controllers
@@ -141,30 +142,5 @@ namespace Controllers
 
             return new JwtSecurityTokenHandler().WriteToken(tokenDescriptor);
         }
-    }
-
-    // DTOs
-    public record RegisterDto
-    {
-        public string? UserName { get; init; }
-        public string? Email { get; init; }
-        public string? Password { get; init; }
-        public string? FirstName { get; init; }
-        public string? LastName { get; init; }
-    }
-
-    public record LoginDto
-    {
-        public string? UserName { get; init; } // can be username or email
-        public string? Password { get; init; }
-    }
-
-    public record LoginResponseDto
-    {
-        public string? Token { get; init; }
-        public int ExpiresInSeconds { get; init; }
-        public string? UserId { get; init; }
-        public string? UserName { get; init; }
-        public string? Email { get; init; }
     }
 }

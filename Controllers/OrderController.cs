@@ -1,39 +1,98 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Caching.Memory;
 using Models;
 using Data;
-using System.Text.Json.Serialization;
+using Dtos;
+using Services.Mappers;
 
 namespace Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] 
+    [Authorize]
     public class OrderController : ControllerBase
     {
         private readonly LogiTrackContext _context;
+        private readonly IMemoryCache _cache;
+        private readonly IOrderMapper _mapper;
 
-        public OrderController(LogiTrackContext context)
+        // Cache configuration
+        private const string OrdersListVersionKey = "Orders:List:Version";
+        private const string OrdersListCacheKeyFormat = "Orders:List:v={0}";
+        private const string OrderByIdCacheKeyFormat = "Orders:Id:{0}";
+        private static readonly TimeSpan OrdersListTtl = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan OrderByIdTtl = TimeSpan.FromSeconds(60);
+
+        public OrderController(LogiTrackContext context, IMemoryCache cache, IOrderMapper mapper)
         {
             _context = context;
+            _cache = cache;
+            _mapper = mapper;
         }
 
+        // GET: /api/order
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Order>>> GetOrders()
+        public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders()
         {
+            // Version token strategy for list invalidation
+            var version = _cache.GetOrCreate<string>(OrdersListVersionKey, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1);
+                return Guid.NewGuid().ToString();
+            });
+
+            var cacheKey = string.Format(OrdersListCacheKeyFormat, version);
+
+            if (_cache.TryGetValue<List<OrderDto>>(cacheKey, out var cached) && cached is not null)
+            {
+                return Ok(cached);
+            }
+
+            // Project to DTO directly in the query for performance (no change-tracking)
             var orders = await _context.Orders
+                .AsNoTracking()
                 .Include(o => o.Items)
+                .OrderByDescending(o => o.DatePlaced)
+                .Select(o => new OrderDto
+                {
+                    OrderId = o.OrderId,
+                    CustomerName = o.CustomerName,
+                    DatePlaced = o.DatePlaced,
+                    Items = o.Items.Select(ii => new InventoryItemDto
+                    {
+                        ItemId = ii.ItemId,
+                        Name = ii.Name,
+                        Quantity = ii.Quantity,
+                        Location = ii.Location
+                    }).ToList()
+                })
                 .ToListAsync();
+
+            _cache.Set(cacheKey, orders, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = OrdersListTtl });
 
             return Ok(orders);
         }
 
+        // GET: /api/order/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<Order>> GetOrder(int id)
+        public async Task<ActionResult<OrderDto>> GetOrder(int id)
         {
+            var cacheKey = string.Format(OrderByIdCacheKeyFormat, id);
+
+            if (_cache.TryGetValue<OrderDto>(cacheKey, out var cached) && cached is not null)
+            {
+                return Ok(cached);
+            }
+
             var order = await _context.Orders
+                .AsNoTracking()
                 .Include(o => o.Items)
                 .FirstOrDefaultAsync(o => o.OrderId == id);
 
@@ -50,15 +109,17 @@ namespace Controllers
                 return NotFound(pd);
             }
 
-            return Ok(order);
+            var dto = _mapper.ToDto(order);
+
+            _cache.Set(cacheKey, dto, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = OrderByIdTtl });
+
+            return Ok(dto);
         }
 
-        // Accepts an Order payload that may include:
-        // - existing items referenced by ItemId (>0)
-        // - new items (no ItemId or ItemId == 0)
+        // POST: /api/order
         [HttpPost]
-        [Authorize(Roles = "Manager")]        
-        public async Task<ActionResult<Order>> CreateOrder([FromBody] Order incomingOrder)
+        [Authorize(Roles = "Manager")]
+        public async Task<ActionResult<OrderDto>> CreateOrder([FromBody] Order incomingOrder)
         {
             if (incomingOrder == null)
             {
@@ -71,16 +132,28 @@ namespace Controllers
                 });
             }
 
-            // Ensure collection is not null
-            var incomingItems = incomingOrder.Items ?? new List<InventoryItem>();
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(incomingOrder.CustomerName))
+            {
+                ModelState.AddModelError(nameof(incomingOrder.CustomerName), "CustomerName is required.");
+            }
 
-            // Prepare final list of InventoryItem entities to attach to the Order
+            if (incomingOrder.Items == null || incomingOrder.Items.Count == 0)
+            {
+                ModelState.AddModelError(nameof(incomingOrder.Items), "At least one item is required for an order.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Resolve incoming items into a final collection of InventoryItem entities
+            var incomingItems = incomingOrder.Items ?? new List<InventoryItem>();
             var finalItems = new List<InventoryItem>();
 
-            // Collect client-supplied IDs to resolve in a single query
             var suppliedIds = incomingItems.Where(i => i.ItemId > 0).Select(i => i.ItemId).Distinct().ToList();
 
-            // Load existing items in one query
             var existingItemsById = new Dictionary<int, InventoryItem>();
             if (suppliedIds.Count > 0)
             {
@@ -91,51 +164,45 @@ namespace Controllers
                 existingItemsById = existingItems.ToDictionary(ii => ii.ItemId);
             }
 
-            // Use a transaction to ensure atomicity of the operation
             await using var transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
-                // Resolve items: reference existing or add new
                 foreach (var incoming in incomingItems)
                 {
                     if (incoming.ItemId > 0 && existingItemsById.TryGetValue(incoming.ItemId, out var existing))
                     {
-                        // Use the tracked existing item
                         finalItems.Add(existing);
                     }
                     else
                     {
-                        incoming.ItemId = 0; // force DB-generated id
-
-                        // Avoid carrying circular reference into tracked graph now
+                        incoming.ItemId = 0;
                         incoming.Order = null;
-
-                        // Add new item to context (will be inserted)
                         await _context.InventoryItems.AddAsync(incoming);
                         finalItems.Add(incoming);
                     }
                 }
 
-                // Prepare the Order entity
-                incomingOrder.OrderId = 0; // force DB-generated id
-                incomingOrder.Items = finalItems;
-                incomingOrder.DatePlaced = incomingOrder.DatePlaced == default ? DateTime.UtcNow : incomingOrder.DatePlaced;
+                var orderEntity = _mapper.CreateEntityForPersistence(incomingOrder, finalItems);
 
-                // Add order and save
-                await _context.Orders.AddAsync(incomingOrder);
+                await _context.Orders.AddAsync(orderEntity);
                 await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
 
-                // Return created resource (GetOrder will return order with items)
-                return CreatedAtAction(nameof(GetOrder), new { id = incomingOrder.OrderId }, incomingOrder);
+                // Invalidate list caches and set per-order cache for immediate reads
+                _cache.Set(OrdersListVersionKey, Guid.NewGuid().ToString(), TimeSpan.FromDays(1));
+
+                var createdDto = _mapper.ToDto(orderEntity);
+                var createdCacheKey = string.Format(OrderByIdCacheKeyFormat, createdDto.OrderId);
+                _cache.Set(createdCacheKey, createdDto, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = OrderByIdTtl });
+
+                return CreatedAtAction(nameof(GetOrder), new { id = createdDto.OrderId }, createdDto);
             }
             catch (DbUpdateException dbEx)
             {
                 await transaction.RollbackAsync();
 
-                // Log the exception in real app (omitted here)
                 var pd = new ProblemDetails
                 {
                     Title = "Database update failed",
@@ -160,7 +227,7 @@ namespace Controllers
             }
         }
 
-        // DELETE: /api/orders/{id}
+        // DELETE: /api/order/{id}
         [HttpDelete("{id}")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> DeleteOrder(int id)
@@ -171,14 +238,18 @@ namespace Controllers
 
             if (order == null)
             {
-                // Idempotent behavior — treat already-absent as success
+                // idempotent behavior
                 return NoContent();
             }
 
-            // Remove related items if they are owned by the order
             _context.InventoryItems.RemoveRange(order.Items);
             _context.Orders.Remove(order);
             await _context.SaveChangesAsync();
+
+            // Invalidate caches: bump list version and remove per-order cache
+            _cache.Set(OrdersListVersionKey, Guid.NewGuid().ToString(), TimeSpan.FromDays(1));
+            var perOrderKey = string.Format(OrderByIdCacheKeyFormat, id);
+            _cache.Remove(perOrderKey);
 
             return NoContent();
         }

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-
 namespace Models
 {
     public class Order
@@ -12,23 +11,25 @@ namespace Models
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int OrderId { get; set; }
 
-
         [Required]
-        public string CustomerName { get; set; } = string.Empty;
+        public required string CustomerName { get; set; }
 
         public DateTime DatePlaced { get; set; }
 
-        public List<InventoryItem> Items { get; set; } = new List<InventoryItem>();
+        // keep the concrete List type for EF navigation but mark as required for compile-time checks.
+        [Required]
+        public required List<InventoryItem> Items { get; set; }
 
-        public Order() 
+        public Order()
         {
             DatePlaced = DateTime.Now;
         }
 
-        public Order(int orderId, string customerName)
+        public Order(int orderId, string customerName, List<InventoryItem> items)
         {
             OrderId = orderId;
             CustomerName = customerName;
+            Items = items;
             DatePlaced = DateTime.Now;
         }
 

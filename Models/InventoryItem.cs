@@ -11,13 +11,14 @@ namespace Models
         public int ItemId { get; set; }
 
         [Required]
-        public string Name { get; set; } = string.Empty;
+        public required string Name { get; set; }
 
-        public int Quantity { get; set; }
+        [Required]
+        public required int Quantity { get; set; }
 
-        public string Location { get; set; } = string.Empty;
+        [Required]
+        public required string Location { get; set; }
 
-        // Optional: Foreign key to Order
         public int? OrderId { get; set; }
 
         [JsonIgnore]
