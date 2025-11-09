@@ -63,7 +63,6 @@ When testing the `POST /api/orders`, feel free tp use the following sample:
 ```json
 {
   "customerName": "Samir",
-  "datePlaced": "2025-11-08T00:00:00",
   "items": [
     {
       "name": "Pallet Jack",
@@ -84,3 +83,5 @@ When testing the `POST /api/orders`, feel free tp use the following sample:
 - [ ] add unit tests
 - [ ] add integration tests
 - [ ] Rewrite endpoints in kebab-case format
+- [ ] Replace SQLite with postgresql or MySql
+- [ ] Use test database for `verify_persistence` script

@@ -5,19 +5,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Microsoft.Extensions.Caching.Memory;
 using Infrastructure;
 using Data;
 using Data.Seeding;
 using Models;
+using Dtos;
 
-Env.Load(); // load .env into environment variables (project root .env); do this before reading config
+Env.Load(); // load .env into environment variables (project root .env)
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuration / connection string
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=logitrack.db";
 
-// Add DbContext BEFORE Identity
 builder.Services.AddDbContext<LogiTrackContext>(options =>
     options.UseSqlite(connectionString));
 
@@ -82,7 +82,7 @@ builder.Services.AddSwaggerGen(c =>
         Description = "Enter JWT as: Bearer {token}"
     });
 
-    // Require Bearer auth for all operations (you can scope this per-action with attributes instead)
+    // Require Bearer auth for all operations
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -93,6 +93,8 @@ builder.Services.AddSwaggerGen(c =>
             new string[] { }
         }
     });
+
+    // Enable annotations
     c.EnableAnnotations();
 });
 
@@ -102,8 +104,94 @@ builder.Services.AddSingleton<Services.Mappers.IOrderMapper, Services.Mappers.Or
 
 var app = builder.Build();
 
-await app.SeedDatabaseAsync();
+// Ensure database schema is applied and optionally rehydrate caches on startup
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
 
+    // Apply any pending EF Core migrations so the DB schema is up-to-date
+    try
+    {
+        var db = services.GetRequiredService<LogiTrackContext>();
+        await db.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Database migration failed: {ex.Message}");
+        throw;
+    }
+
+    // Rehydrate critical in-memory caches from the durable store
+    try
+    {
+        var cache = services.GetService<IMemoryCache>();
+        if (cache != null)
+        {
+            // Rehydrate inventory list cache
+            const string inventoryListVersionKey = "Inventory:List:Version";
+            const string inventoryListCacheKeyFormat = "Inventory:List:v={0}";
+            var inventoryVersion = Guid.NewGuid().ToString();
+            cache.Set(inventoryListVersionKey, inventoryVersion, TimeSpan.FromDays(1));
+            var invCacheKey = string.Format(inventoryListCacheKeyFormat, inventoryVersion);
+
+            var db = services.GetRequiredService<LogiTrackContext>();
+            var inventoryItems = await db.InventoryItems
+                .AsNoTracking()
+                .OrderBy(i => i.ItemId)
+                .Select(i => new InventoryItemDto
+                {
+                    ItemId = i.ItemId,
+                    Name = i.Name,
+                    Quantity = i.Quantity,
+                    Location = i.Location
+                })
+                .ToListAsync();
+
+            cache.Set(invCacheKey, inventoryItems, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6) // longer-lived warm cache
+            });
+
+            // Rehydrate orders list cache
+            const string ordersListVersionKey = "Orders:List:Version";
+            const string ordersListCacheKeyFormat = "Orders:List:v={0}";
+            var ordersVersion = Guid.NewGuid().ToString();
+            cache.Set(ordersListVersionKey, ordersVersion, TimeSpan.FromDays(1));
+            var ordersCacheKey = string.Format(ordersListCacheKeyFormat, ordersVersion);
+
+            var orders = await db.Orders
+                .AsNoTracking()
+                .Include(o => o.Items)
+                .OrderByDescending(o => o.DatePlaced)
+                .Select(o => new OrderDto
+                {
+                    OrderId = o.OrderId,
+                    CustomerName = o.CustomerName,
+                    DatePlaced = o.DatePlaced,
+                    Items = o.Items.Select(ii => new InventoryItemDto
+                    {
+                        ItemId = ii.ItemId,
+                        Name = ii.Name,
+                        Quantity = ii.Quantity,
+                        Location = ii.Location
+                    }).ToList()
+                })
+                .ToListAsync();
+
+            cache.Set(ordersCacheKey, orders, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6)
+            });
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Cache rehydration failed: {ex.Message}");
+    }
+}
+
+// Seed DB (roles/users etc.)
+await app.SeedDatabaseAsync();
 
 // Middleware pipeline
 if (app.Environment.IsDevelopment())

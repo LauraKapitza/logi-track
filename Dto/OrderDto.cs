@@ -7,7 +7,7 @@ namespace Dtos
     public class OrderDto
     {
         [SwaggerSchema("Database identifier for the order")]
-        public int OrderId { get; set; }
+        public int? OrderId { get; set; }
 
         [Required]
         [SwaggerSchema("Name of the customer who placed the order")]
