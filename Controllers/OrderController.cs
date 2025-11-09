@@ -11,6 +11,7 @@ using Models;
 using Data;
 using Dtos;
 using Services.Mappers;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Controllers
 {
@@ -37,8 +38,11 @@ namespace Controllers
             _mapper = mapper;
         }
 
-        // GET: /api/order
+        // GET: /api/Order
         [HttpGet]
+        [SwaggerOperation(Summary = "List orders", Description = "Returns a list of orders (cached).")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(IEnumerable<OrderDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<OrderDto>>> GetOrders()
         {
             // Version token strategy for list invalidation
@@ -80,8 +84,12 @@ namespace Controllers
             return Ok(orders);
         }
 
-        // GET: /api/order/{id}
+        // GET: /api/Order/{id}
         [HttpGet("{id}")]
+        [SwaggerOperation(Summary = "Get order by id", Description = "Returns a single order by id (cached per id).")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(OrderDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
         public async Task<ActionResult<OrderDto>> GetOrder(int id)
         {
             var cacheKey = string.Format(OrderByIdCacheKeyFormat, id);
@@ -116,9 +124,14 @@ namespace Controllers
             return Ok(dto);
         }
 
-        // POST: /api/order
+        // POST: /api/Order
         [HttpPost]
         [Authorize(Roles = "Manager")]
+        [SwaggerOperation(Summary = "Create order", Description = "Creates an order. Accepts existing or new inventory items. Invalidates order caches.")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(OrderDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<OrderDto>> CreateOrder([FromBody] Order incomingOrder)
         {
             if (incomingOrder == null)
@@ -227,9 +240,11 @@ namespace Controllers
             }
         }
 
-        // DELETE: /api/order/{id}
+        // DELETE: /api/Order/{id}
         [HttpDelete("{id}")]
         [Authorize(Roles = "Manager")]
+        [SwaggerOperation(Summary = "Delete order", Description = "Deletes an order and its owned items; invalidates caches.")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> DeleteOrder(int id)
         {
             var order = await _context.Orders

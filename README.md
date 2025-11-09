@@ -13,19 +13,25 @@ LogiTrack/
 │   └── RoleAndUserSeeder.cs
 ├── Dto/
 │   ├── InventoryItemDto.cs
-│   └── OrderDto.cs
+│   ├── LoginDto.cs
+│   ├── LoginResponseDto.cs
+│   ├── OrderDto.cs
+│   └── RegisterDto.cs
 ├── Infrastructure/
 │   └── DatabaseSeederExtensions.cs
 ├── Migrations/
 ├── Models/
 │   ├── ApplicationUser.cs
-│   └── InventoryItem.cs
+│   ├── InventoryItem.cs
+│   └── Order.cs
 ├── Properties/
 │   └── launchSetting.json
 ├── Services/
 │   └── Mappers
 |       ├── IInventoryMapper.cs
-|       └── InventoryMapper.cs
+|       ├── InventoryMapper.cs
+|       ├── IOrderMapper.cs
+|       └── OrderMapper.cs
 ├── appsettings.json
 ├── LogiTrack.csproj
 ├── LogiTrack.sln
@@ -77,3 +83,4 @@ When testing the `POST /api/orders`, feel free tp use the following sample:
 - [ ] add fields `description` and `isActive` to the `InventoyItem` model and dto
 - [ ] add unit tests
 - [ ] add integration tests
+- [ ] Rewrite endpoints in kebab-case format

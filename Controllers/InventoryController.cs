@@ -11,6 +11,7 @@ using Services.Mappers;
 using Models;
 using Data;
 using Dtos;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Controllers
 {
@@ -36,8 +37,11 @@ namespace Controllers
         }
     
 
-        // GET: /api/inventory
+        // GET: /api/Inventory
         [HttpGet]
+        [SwaggerOperation(Summary = "List inventory items", Description = "Returns a cached list of inventory items.")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(IEnumerable<InventoryItemDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<InventoryItemDto>>> GetInventory()
         {
             // Version token approach for invalidation
@@ -80,6 +84,10 @@ namespace Controllers
         // POST: /api/Inventory
         [HttpPost]
         [Authorize(Roles = "Manager")]
+        [SwaggerOperation(Summary = "Create inventory item", Description = "Creates a new inventory item and invalidates the cached list.")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(InventoryItemDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<InventoryItemDto>> AddInventoryItem([FromBody] InventoryItemDto createDto)
         {
             if (createDto == null || !ModelState.IsValid)
@@ -97,9 +105,12 @@ namespace Controllers
             return CreatedAtAction(nameof(GetInventory), new { id = resultDto.ItemId }, resultDto);
         }
 
-        // DELETE: /api/inventory/{id}
+        // DELETE: /api/Inventory/{id}
         [HttpDelete("{id}")]
         [Authorize(Roles = "Manager")]
+        [SwaggerOperation(Summary = "Delete inventory item", Description = "Deletes an inventory item by id and invalidates the cached list.")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteInventoryItem(int id)
         {
             var item = await _context.InventoryItems.FindAsync(id);
