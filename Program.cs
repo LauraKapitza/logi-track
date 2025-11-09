@@ -93,6 +93,7 @@ builder.Services.AddSwaggerGen(c =>
             new string[] { }
         }
     });
+    c.EnableAnnotations();
 });
 
 builder.Services.AddTransient<ISeeder, RoleAndUserSeeder>();

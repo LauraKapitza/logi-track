@@ -1,15 +1,12 @@
-using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Dtos;
 using Models;
+using Swashbuckle.AspNetCore.Annotations;
 
 namespace Controllers
 {
@@ -33,14 +30,18 @@ namespace Controllers
 
         // POST: /api/auth/register
         [HttpPost("register")]
+        [SwaggerOperation(Summary = "Register a new user", Description = "Creates a new user account and assigns the User role.")]
+        [Produces("application/json")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterDto model)
         {
-            if (model == null)
-                return BadRequest(new ProblemDetails { Title = "Invalid payload", Status = 400 });
+            if (model == null || !ModelState.IsValid)
+                return BadRequest(ModelState);
 
             var user = new ApplicationUser
             {
-                UserName = model.UserName ?? model.Email,
+                UserName = string.IsNullOrWhiteSpace(model.UserName) ? model.Email : model.UserName,
                 Email = model.Email,
                 FirstName = model.FirstName,
                 LastName = model.LastName,
@@ -54,35 +55,42 @@ namespace Controllers
                 var pd = new ProblemDetails
                 {
                     Title = "User creation failed",
-                    Status = 400,
+                    Status = StatusCodes.Status400BadRequest,
                     Detail = string.Join("; ", GetErrors(result))
                 };
                 return BadRequest(pd);
             }
+
             await _userManager.AddToRoleAsync(user, "User");
 
-            return CreatedAtAction(null, null); // 201 with empty location
+            // CreatedAtAction: no dedicated GET user endpoint exists here so return simple 201 without location
+            return StatusCode(StatusCodes.Status201Created);
         }
 
         // POST: /api/auth/login
         [HttpPost("login")]
+        [SwaggerOperation(Summary = "Authenticate user", Description = "Verifies credentials and returns a JWT token on success.")]
+        [Produces("application/json")]
+        [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Login([FromBody] LoginDto model)
         {
-            if (model == null)
-                return BadRequest(new ProblemDetails { Title = "Invalid payload", Status = 400 });
+            if (model == null || !ModelState.IsValid)
+                return BadRequest(ModelState);
 
             var user = await _userManager.FindByNameAsync(model.UserName) ??
                        await _userManager.FindByEmailAsync(model.UserName);
 
             if (user == null)
-                return Unauthorized(new ProblemDetails { Title = "Invalid credentials", Status = 401 });
+                return Unauthorized(new ProblemDetails { Title = "Invalid credentials", Status = StatusCodes.Status401Unauthorized });
 
             if (!user.IsActive)
                 return Forbid();
 
             var signInResult = await _signInManager.CheckPasswordSignInAsync(user, model.Password, lockoutOnFailure: false);
             if (!signInResult.Succeeded)
-                return Unauthorized(new ProblemDetails { Title = "Invalid credentials", Status = 401 });
+                return Unauthorized(new ProblemDetails { Title = "Invalid credentials", Status = StatusCodes.Status401Unauthorized });
 
             var token = await GenerateJwtToken(user);
             var response = new LoginResponseDto
@@ -90,8 +98,8 @@ namespace Controllers
                 Token = token,
                 ExpiresInSeconds = int.Parse(_configuration["Jwt:ExpiresSeconds"] ?? "3600"),
                 UserId = user.Id,
-                UserName = user.UserName,
-                Email = user.Email
+                UserName = user.UserName ?? string.Empty,
+                Email = user.Email ?? string.Empty
             };
 
             return Ok(response);
