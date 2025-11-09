@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Models;
@@ -7,6 +8,7 @@ namespace Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class InventoryController : ControllerBase
     {
         private readonly LogiTrackContext _context;
@@ -26,6 +28,7 @@ namespace Controllers
 
         // POST: /api/inventory
         [HttpPost]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult<InventoryItem>> AddInventoryItem([FromBody] InventoryItem item)
         {
             // Ensure server-side id generation if needed
@@ -39,6 +42,7 @@ namespace Controllers
 
         // DELETE: /api/inventory/{id}
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> DeleteInventoryItem(int id)
         {
             var item = await _context.InventoryItems.FindAsync(id);

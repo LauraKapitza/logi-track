@@ -1,5 +1,30 @@
 # LogiTrack (WIP)
 
+## Project Structure
+
+LogiTrack/
+├── Controllers/
+│   ├── AuthController.cs
+│   ├── InventoryController.cs
+│   └── OrderController.cs
+├── Data/
+│   ├── ISeeder.cs
+│   ├── LogiTrackContext.cs
+│   └── RoleAndUserSeeder.cs
+├── Infrastructure/
+│   └── DatabaseSeederExtensions.cs
+├── Migrations/
+├── Models/
+│   ├── ApplicationUser.cs
+│   └── InventoryItem.cs
+├── Properties/
+│   └── launchSetting.json
+├── appsettings.json
+├── LogiTrack.csproj
+├── LogiTrack.sln
+├── Program.cs
+└── README.md
+
 ## Testing endpoints
 
 The project uses **Swagger** for testing the API's endpoints.

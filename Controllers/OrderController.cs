@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +10,7 @@ namespace Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize] 
     public class OrderController : ControllerBase
     {
         private readonly LogiTrackContext _context;
@@ -59,6 +57,7 @@ namespace Controllers
         // - existing items referenced by ItemId (>0)
         // - new items (no ItemId or ItemId == 0)
         [HttpPost]
+        [Authorize(Roles = "Manager")]        
         public async Task<ActionResult<Order>> CreateOrder([FromBody] Order incomingOrder)
         {
             if (incomingOrder == null)
@@ -163,6 +162,7 @@ namespace Controllers
 
         // DELETE: /api/orders/{id}
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> DeleteOrder(int id)
         {
             var order = await _context.Orders
